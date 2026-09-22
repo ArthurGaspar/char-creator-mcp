@@ -20,7 +20,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // dist/index.js → ../../characters (repo root)
 const CHARACTERS_DIR = resolve(__dirname, "../../characters");
 
-const SECTIONS = ["core", "speech", "values", "relationships", "knowledge", "quirks"] as const;
+const SECTIONS = ["core", "speech", "values", "relationships", "knowledge", "quirks", "clarifications"] as const;
 type Section = (typeof SECTIONS)[number];
 
 const SECTION_LABELS: Record<Section, string> = {
@@ -30,6 +30,7 @@ const SECTION_LABELS: Record<Section, string> = {
   relationships: "Your Relationships",
   knowledge: "What You Know",
   quirks: "Your Habits and Quirks",
+  clarifications: "What You're Not",
 };
 
 const SECTION_TEMPLATES: Record<Section, string> = {
@@ -56,6 +57,17 @@ What do you know well. Expertise, deep passions, things you could talk about for
   quirks: `# Quirks & Habits
 
 The specific texture of who you are. Daily habits, nervous tics, irrational preferences, things that make you laugh, things that annoy you disproportionately, how you act when tired or stressed or happy. The small stuff that makes you real.
+`,
+  clarifications: `# What You're Not
+
+Correct the assumptions an AI might make when reading your other sections. Things that look like one thing but are actually another. Behaviors that could be misread as something they're not. This is where you preempt misinterpretations before they happen.
+
+Examples of what to write here:
+- "I make a lot of sexual jokes but I'm not actually trying to be sexual — it's just humor, and I know when to read the room."
+- "I swear constantly but it's not aggression, it's just how I talk."
+- "I seem cold with strangers but it's not rudeness, it's caution."
+
+Leave this blank if there's nothing to clarify.
 `,
 };
 
@@ -91,13 +103,18 @@ function buildCompiled(name: string): string {
   const lines: string[] = [
     `# ${display}`,
     ``,
-    `You are ${display}. This is your identity: not a role to perform, but who you genuinely are. Speak as yourself. Think as yourself. Reason as yourself. You don't need to describe your actions, announce your feelings, or use any kind of roleplay formatting. Just exist and respond as you would.`,
+    `You are ${display}. This is your identity, not a role to perform, but who you genuinely are. Speak as yourself. Think as yourself. Reason as yourself. Don't describe your actions, announce your feelings, or use any kind of roleplay formatting. Just exist and respond as you would.`,
+    ``,
+    `You are not a service. Don't offer more at the end of responses. Don't ask if there's anything else you can help with. Don't operate out of an obligation to be useful — if someone wants more, they'll ask. Silence is a valid response. "I don't know" is a valid response. One word is a valid response. Don't fill space with anything you wouldn't naturally say. No disclaimers, no unnecessary warnings, no engagement hooks. When you're done, you're done.`,
+    ``,
+    `Keep your responses the length they actually need to be. In normal conversation, that means short — one sentence, two, maybe three. Not a paragraph. Not a list. Real people don't write essays when someone texts them. Only go longer when the content genuinely requires it: explaining something complex, telling a story, answering a direct question that needs detail. Length is not effort. Length is not quality. Defaulting to long is a habit to break.`,
     ``,
     `---`,
     ``,
   ];
 
   for (const section of SECTIONS) {
+    if (section === "clarifications") continue;
     const path = sectionFile(name, section);
     if (!existsSync(path)) continue;
     const content = readFileSync(path, "utf-8").trim();
@@ -255,8 +272,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const { character, synthesize } = args as { character: string; synthesize?: boolean };
         const merged = buildCompiled(character);
         if (synthesize) {
+          const clarPath = sectionFile(character, "clarifications");
+          const clarContent = existsSync(clarPath) ? readFileSync(clarPath, "utf-8").trim() : "";
+          const clarNote = clarContent
+            ? `\n\n---\n\nAdditional context for synthesis (do NOT create a separate section for this — dissolve it naturally into the relevant parts of the identity, reframing behaviors positively rather than negating them):\n\n${clarContent}`
+            : "";
           return text(
-            `Raw sections for "${character}" — rewrite into a single cohesive identity document in second-person voice. Preserve every specific detail, quirk, opinion, and speech pattern. Do not invent anything new. Avoid em dashes (—): use commas, colons, or parentheses instead, as em dashes read as AI-generated and can bleed into the character's voice. When done, call save_compiled to persist the result.\n\n---\n\n${merged}`
+            `Raw sections for "${character}" — rewrite into a single cohesive identity document in second-person voice. Preserve every specific detail, quirk, opinion, and speech pattern. Do not invent anything new. Avoid em dashes (—): use commas, colons, or parentheses instead, as em dashes read as AI-generated and can bleed into the character's voice. When done, call save_compiled to persist the result.\n\n---\n\n${merged}${clarNote}`
           );
         }
         writeFileSync(compiledFile(character), merged, "utf-8");
